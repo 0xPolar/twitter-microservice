@@ -346,3 +346,84 @@ class TestFollowerCounts:
         assert counted_follow.num_followers == 1
         remaining = test_db.query(Follow).one()
         assert remaining.follower_id == other_follower
+
+
+class TestDuplicateRegistration:
+    @pytest.mark.parametrize("duplicate", ["email", "username", "both"])
+    def test_duplicate_registration_preserves_account(self, test_client_no_auth, test_db, duplicate):
+        from src.models import User
+
+        original = {"email": "original@example.com", "username": "original", "password": "original-password"}
+        registered = test_client_no_auth.post("/users/register", json=original)
+        assert registered.status_code == 200
+        attempted = {"email": "other@example.com", "username": "other", "password": "replacement-password"}
+        if duplicate in {"email", "both"}:
+            attempted["email"] = original["email"]
+        if duplicate in {"username", "both"}:
+            attempted["username"] = original["username"]
+        response = test_client_no_auth.post("/users/register", json=attempted)
+        assert response.status_code == 409
+        assert response.json() == {"detail": "Email or username already registered"}
+        stored = test_db.query(User).one()
+        assert str(stored.id) == registered.json()["user"]["id"]
+        assert stored.email == original["email"]
+        assert stored.username == original["username"]
+        assert stored.verify_password(original["password"])
+        assert not stored.verify_password(attempted["password"])
+        login = test_client_no_auth.post("/users/login", json={"email": original["email"], "password": original["password"]})
+        assert login.status_code == 200
+        assert "token" in login.json()
+
+
+class TestDuplicateFollow:
+    def test_repeated_follow_is_success_without_increment(self, test_client, test_db, counted_follow):
+        from src.models import Follow
+
+        relationship_id = test_db.query(Follow).one().id
+        for _ in range(3):
+            response = test_client.post("/follow", json={"following_id": str(counted_follow.id)})
+            assert response.status_code == 200
+            assert response.json() == {"message": "User Followed"}
+            test_db.refresh(counted_follow)
+            assert counted_follow.num_followers == 1
+            assert test_db.query(Follow).one().id == relationship_id
+
+    def test_follow_after_unfollow_increments_once(self, test_client, test_db, counted_follow):
+        from src.models import Follow
+
+        assert test_client.delete(f"/follow/{counted_follow.id}").status_code == 204
+        for _ in range(2):
+            assert test_client.post("/follow", json={"following_id": str(counted_follow.id)}).status_code == 200
+        test_db.refresh(counted_follow)
+        assert counted_follow.num_followers == 1
+        assert test_db.query(Follow).count() == 1
+
+
+class TestUnexpectedIntegrityErrors:
+    @pytest.mark.parametrize("endpoint", ["register", "follow"])
+    @pytest.mark.parametrize("error_kind", ["not_null", "unexpected_unique"])
+    def test_unrelated_integrity_error_remains_server_error(self, test_client, test_db, counted_follow, endpoint, error_kind):
+        from types import SimpleNamespace
+        from sqlalchemy.exc import IntegrityError
+        from src.models import Follow, User
+
+        # PostgreSQL distinguishes uniqueness by SQLSTATE and constraint name.
+        original = SimpleNamespace(
+            pgcode="23502" if error_kind == "not_null" else "23505",
+            diag=SimpleNamespace(constraint_name="unrelated_constraint"),
+        )
+        error = IntegrityError("test statement", {}, original)
+        test_db.query(Follow).delete()
+        counted_follow.num_followers = 0
+        test_db.commit()
+        with patch.object(test_db, "commit", side_effect=error):
+            if endpoint == "register":
+                response = test_client.post("/users/register", json={
+                    "email": "new@example.com", "username": "new", "password": "password"})
+            else:
+                response = test_client.post("/follow", json={"following_id": str(counted_follow.id)})
+        assert response.status_code == 500
+        test_db.refresh(counted_follow)
+        assert counted_follow.num_followers == 0
+        assert test_db.query(Follow).count() == 0
+        assert test_db.query(User).count() == 1

@@ -1,8 +1,10 @@
 from typing import Generator
+from sqlite3 import SQLITE_CONSTRAINT_UNIQUE
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import sessionmaker, declarative_base, scoped_session, Session
+from sqlalchemy.exc import IntegrityError
 
 from src.dependencies.config import Config
 
@@ -28,6 +30,15 @@ db_session = scoped_session(SessionLocal)
 
 Base = declarative_base()
 Base.query = db_session.query_property()
+
+
+def is_unique_conflict(error: IntegrityError, constraints: tuple[str, ...]) -> bool:
+    """Recognize the expected uniqueness conflicts on PostgreSQL and test SQLite."""
+    original = error.orig
+    if getattr(original, "pgcode", None) == "23505":
+        diagnostic = getattr(original, "diag", None)
+        return getattr(diagnostic, "constraint_name", None) in constraints
+    return getattr(original, "sqlite_errorcode", None) == SQLITE_CONSTRAINT_UNIQUE
 
 
 def get_db() -> Generator[Session, None, None]:

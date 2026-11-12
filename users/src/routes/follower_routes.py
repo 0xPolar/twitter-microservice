@@ -3,11 +3,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import case, func
 
 from src.dependencies.auth import VerifyToken, UserToken
-from src.dependencies.db import get_db
+from src.dependencies.db import get_db, is_unique_conflict
 from src.models import User, Follow
 from src.schemas import CreateFollowerRequset
 
@@ -37,6 +37,12 @@ def CreateFollow(
             raise HTTPException(status_code=404, detail="user not found")
         db.add(new_follow)
         db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        if is_unique_conflict(e, ("unique_follow",)):
+            return {"message": "User Followed"}
+        logger.error(f"Database error creating follow: {e}")
+        raise HTTPException(status_code=500, detail="database error") from e
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Database error creating follow: {e}")

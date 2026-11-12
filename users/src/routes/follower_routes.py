@@ -1,9 +1,10 @@
 import logging
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import and_
+from sqlalchemy import case, func
 
 from src.dependencies.auth import VerifyToken, UserToken
 from src.dependencies.db import get_db
@@ -20,18 +21,20 @@ def CreateFollow(
     user: UserToken = Depends(VerifyToken),
     db: Session = Depends(get_db),
 ):
-    if follow.following_id == user.id:
+    follower_id = UUID(user.id)
+    if follow.following_id == follower_id:
         raise HTTPException(status_code=400, detail="can not follow self")
 
-    new_follow = Follow(user.id, follow.following_id)
-
-    userFollowing: User = db.query(User).filter_by(id=new_follow.following_id).first()
-
-    if not userFollowing:
-        raise HTTPException(status_code=404, detail="user not found")
-    userFollowing.increment_followers()
+    new_follow = Follow(follower_id, follow.following_id)
 
     try:
+        updated = db.query(User).filter_by(id=follow.following_id).update(
+            {User.num_followers: func.coalesce(User.num_followers, 0) + 1},
+            synchronize_session=False,
+        )
+        if not updated:
+            db.rollback()
+            raise HTTPException(status_code=404, detail="user not found")
         db.add(new_follow)
         db.commit()
     except SQLAlchemyError as e:
@@ -81,19 +84,25 @@ def GetFollowByID(
 
 @router.delete("/follow/{following_id}")
 def DeleteFollow(
-    following_id: str,
+    following_id: UUID,
     user: UserToken = Depends(VerifyToken),
     db: Session = Depends(get_db),
 ):
-    follow = db.query(Follow).filter(
-        and_(Follow.follower_id == user.id, Follow.following_id == following_id)  # type: ignore
-    ).first()
-
-    if not follow:
-        raise HTTPException(status_code=404, detail="follow not found")
-
     try:
-        db.delete(follow)
+        removed = db.query(Follow).filter_by(
+            follower_id=UUID(user.id), following_id=following_id
+        ).delete(synchronize_session=False)
+        if not removed:
+            db.rollback()
+            raise HTTPException(status_code=404, detail="follow not found")
+        db.query(User).filter_by(id=following_id).update(
+            {
+                User.num_followers: case(
+                    (User.num_followers > 0, User.num_followers - 1), else_=0
+                )
+            },
+            synchronize_session=False,
+        )
         db.commit()
     except SQLAlchemyError as e:
         db.rollback()

@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr
+from uuid import UUID
 
 
 # User Schemas
@@ -15,4 +16,4 @@ class LoginUserRequest(BaseModel):
 
 # Follower Schemas
 class CreateFollowerRequset(BaseModel):
-    following_id: str
+    following_id: UUID

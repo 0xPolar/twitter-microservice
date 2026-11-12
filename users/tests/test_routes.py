@@ -222,10 +222,18 @@ class TestFollowEndpoints:
             "following_id": str(user_to_follow.id)
         })
 
+        test_db.refresh(user_to_follow)
+        assert user_to_follow.num_followers == 1
+
         # Unfollow
         response = test_client.delete(f"/follow/{user_to_follow.id}")
 
         assert response.status_code == 204
+        test_db.refresh(user_to_follow)
+        assert user_to_follow.num_followers == 0
+        assert test_client.delete(f"/follow/{user_to_follow.id}").status_code == 404
+        test_db.refresh(user_to_follow)
+        assert user_to_follow.num_followers == 0
 
     def test_delete_follow_not_found(self, test_client):
         """Test unfollowing when follow relationship doesn't exist."""
@@ -274,3 +282,67 @@ class TestCredentialWorkflow:
     def test_invalid_login_email_is_validation_error(self, test_client_no_auth):
         response = test_client_no_auth.post("/users/login", json={"email": "invalid", "password": "password"})
         assert response.status_code == 422
+
+
+@pytest.fixture
+def counted_follow(test_db, mock_user_token):
+    from uuid import UUID
+    from src.models import User, Follow
+
+    target = User("counted@example.com", "password123", "counted")
+    target.num_followers = 1
+    test_db.add(target)
+    test_db.flush()
+    test_db.add(Follow(UUID(mock_user_token.id), target.id))
+    test_db.commit()
+    return target
+
+
+class TestFollowerCounts:
+    @pytest.mark.parametrize("initial_count,expected", [(3, 2), (0, 0), (None, 0)])
+    def test_unfollow_updates_count(self, test_client, test_db, counted_follow, initial_count, expected):
+        from src.models import Follow
+
+        counted_follow.num_followers = initial_count
+        test_db.commit()
+        response = test_client.delete(f"/follow/{counted_follow.id}")
+        assert response.status_code == 204
+        test_db.refresh(counted_follow)
+        assert counted_follow.num_followers == expected
+        assert test_db.query(Follow).count() == 0
+
+    def test_failed_commit_preserves_relationship_and_count(self, test_client, test_db, counted_follow):
+        from sqlalchemy.exc import SQLAlchemyError
+        from src.models import Follow
+
+        with patch.object(test_db, "commit", side_effect=SQLAlchemyError("commit failed")):
+            response = test_client.delete(f"/follow/{counted_follow.id}")
+        assert response.status_code == 500
+        test_db.refresh(counted_follow)
+        assert counted_follow.num_followers == 1
+        assert test_db.query(Follow).count() == 1
+
+    def test_missing_relationship_preserves_count(self, test_client, test_db, counted_follow):
+        from src.models import Follow
+
+        test_db.query(Follow).delete()
+        test_db.commit()
+        response = test_client.delete(f"/follow/{counted_follow.id}")
+        assert response.status_code == 404
+        test_db.refresh(counted_follow)
+        assert counted_follow.num_followers == 1
+
+    def test_unfollow_preserves_other_followers(self, test_client, test_db, counted_follow):
+        from uuid import uuid4
+        from src.models import Follow
+
+        other_follower = uuid4()
+        test_db.add(Follow(other_follower, counted_follow.id))
+        counted_follow.num_followers = 2
+        test_db.commit()
+        response = test_client.delete(f"/follow/{counted_follow.id}")
+        assert response.status_code == 204
+        test_db.refresh(counted_follow)
+        assert counted_follow.num_followers == 1
+        remaining = test_db.query(Follow).one()
+        assert remaining.follower_id == other_follower

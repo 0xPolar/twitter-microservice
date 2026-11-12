@@ -3,6 +3,9 @@
 .PHONY: help test test-users test-tweets test-feed test-search test-all
 .PHONY: test-verbose test-coverage install-all clean format lint
 
+# Container runtime for the local development stack
+DEV ?= python3 dev.py
+
 # Colors for output
 BLUE := \033[0;34m
 GREEN := \033[0;32m
@@ -28,7 +31,7 @@ help:
 	@echo "  make clean           - Clean up cache and temp files"
 	@echo ""
 	@echo "$(GREEN)Docker:$(NC)"
-	@echo "  make up              - Start all services with docker-compose"
+	@echo "  make up              - Start all services with Podman Compose"
 	@echo "  make down            - Stop all services"
 	@echo "  make logs            - Show docker logs"
 
@@ -122,15 +125,15 @@ clean:
 # ===== Docker =====
 
 up:
-	@echo "$(BLUE)Starting services with docker-compose...$(NC)"
-	docker-compose up --build -d
+	@echo "$(BLUE)Starting services with Podman Compose...$(NC)"
+	$(DEV) up
 
 down:
 	@echo "$(BLUE)Stopping services...$(NC)"
-	docker-compose down
+	$(DEV) down
 
 logs:
-	docker-compose logs -f
+	$(DEV) logs
 
 # ===== Quick Test Shortcuts =====
 

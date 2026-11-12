@@ -76,25 +76,27 @@ The project is composed of the following core microservices:
 
 ## Getting Started
 
-To get this microservices application running locally, ensure you have Docker and Docker Compose installed. Then, follow these steps:
+The development stack uses rootless Podman and `podman-compose`. Python 3 is required on the host for the standard-library-only development script; application services run in containers.
 
-1. **Clone the Repository:**
+```bash
+python3 dev.py init
+python3 dev.py up
+```
 
-    ```bash
-    git clone <your-repository-url>
-    cd <your-repository-directory>
-    ```
+`init` creates a local `.env` with development settings and a random JWT secret, leaving an existing file unchanged. `up` builds and starts the stack, then waits for API health and gRPC listeners. Python source is mounted for reload.
 
-2. **Configure Environment Variables:**
-    - Create a `.env` file in the root of the project.
-    - You can use the `.env.example` file as a template.
-3. **Run the Application:**
+```bash
+python3 dev.py ps
+python3 dev.py logs user-service
+python3 dev.py check
+python3 dev.py rebuild feed-worker
+python3 dev.py test users
+python3 dev.py down
+```
 
-    ```bash
-    docker-compose up --build
-    ```
+API documentation is available on localhost ports 5000 (users), 5001 (tweets), 5002 (feed), and 5003 (search), at `/docs`. Host ports can be changed in `.env`.
 
-This will build and start all the services, including the databases and message broker.
+Normal shutdown preserves data. To explicitly delete this development project's volumes, run `python3 dev.py reset --confirm-delete-dev-data`. Run `python3 dev.py --help` for available commands.
 
 ## Documentation
 

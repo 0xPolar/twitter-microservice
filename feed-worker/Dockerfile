@@ -1,24 +1,12 @@
-# Build stage
-FROM golang:1.18-alpine AS builder
-
+FROM docker.io/library/golang:1.25-alpine AS builder
 WORKDIR /app
-
-COPY go.mod ./ 
-COPY go.sum ./
-
+COPY go.mod go.sum ./
 RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /app/worker .
 
-COPY . ./
-
-RUN go build -o /app/main .
-
-# Final stage
-FROM alpine:latest
-
+FROM docker.io/library/alpine:3.22
+RUN apk add --no-cache ca-certificates
 WORKDIR /app
-
-COPY --from=builder /app/main .
-
-EXPOSE 50052
-
-CMD ["./main"] 
+COPY --from=builder /app/worker ./worker
+CMD ["./worker"]

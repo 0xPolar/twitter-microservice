@@ -1,173 +1,153 @@
-version: "3.8"
+# Local development stack. Run with python3 dev.py.
+name: twitter-dev
+
+x-python: &python
+  env_file: [.env]
+  environment:
+    WATCHFILES_FORCE_POLLING: "true"
+  healthcheck:
+    test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=3)"]
+    interval: 5s
+    timeout: 5s
+    retries: 20
+    start_period: 20s
 
 services:
-  # --- Infrastructure Services ---
-
   postgres:
-    image: postgres:17
-    container_name: postgres
+    image: docker.io/library/postgres:17
     environment:
       POSTGRES_DB: ${DB_DATABASE}
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "${DB_PORT}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    ports: ["127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"]
+    volumes: [postgres_data:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
-      interval: 10s
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 20
 
   redis:
-    image: redis:latest
-    container_name: redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
+    image: docker.io/library/redis:7.4-alpine
+    ports: ["127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"]
+    volumes: [redis_data:/data]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
-    container_name: elasticsearch
-    ports:
-      - "9200:9200"
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.0
     environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
-    volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports: ["127.0.0.1:${ELASTICSEARCH_HOST_PORT:-9200}:9200"]
+    volumes: [elasticsearch_data:/usr/share/elasticsearch/data]
+    healthcheck:
+      test: [CMD-SHELL, "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=3s' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 
   jaeger:
-    image: jaegertracing/all-in-one:1.74.0
-    container_name: jaeger
+    image: docker.io/jaegertracing/all-in-one:1.74.0
     ports:
-      - "16696:16686"
-      - "4317:4317"
+      - "127.0.0.1:${JAEGER_UI_PORT:-16686}:16686"
+      - "127.0.0.1:4317:4317"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
 
   rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
+    hostname: rabbitmq
+    image: docker.io/library/rabbitmq:3.13-management
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "127.0.0.1:${RABBITMQ_HOST_PORT:-5672}:5672"
+      - "127.0.0.1:${RABBITMQ_UI_PORT:-15672}:15672"
+    volumes: [rabbitmq_data:/var/lib/rabbitmq]
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # --- Application Services ---
+      test: [CMD, gosu, rabbitmq, rabbitmq-diagnostics, -q, ping]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 15s
 
   user-service:
-    build:
-      context: ./users
-      dockerfile: Dockerfile
-    container_name: user
+    <<: *python
+    build: ./users
     ports:
-      - "${USERS_FLASK_PORT}:5000"
-      - "${USERS_GRPC_PORT}:50051"
-    env_file:
-      - .env
+      - "127.0.0.1:${USERS_HTTP_PORT:-5000}:5000"
+      - "127.0.0.1:${USERS_GRPC_PORT:-50050}:50051"
+    volumes:
+      - ./users/src:/app/src:ro,z
+      - ./users/main.py:/app/main.py:ro,z
+      - ./users/tests:/app/tests:ro,z
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      jaeger:
-        condition: service_started
-    # restart: unless-stopped
+      postgres: {condition: service_healthy}
+      jaeger: {condition: service_started}
 
   tweet-service:
-    build:
-      context: ./tweets
-      dockerfile: Dockerfile
-    container_name: tweet
+    <<: *python
+    build: ./tweets
     ports:
-      - "${TWEETS_FLASK_PORT}:5000"
-      - "${TWEETS_GRPC_PORT}:50051"
-    env_file:
-      - .env
+      - "127.0.0.1:${TWEETS_HTTP_PORT:-5001}:5000"
+      - "127.0.0.1:${TWEETS_GRPC_PORT:-50051}:50051"
+    volumes:
+      - ./tweets/src:/app/src:ro,z
+      - ./tweets/main.py:/app/main.py:ro,z
+      - ./tweets/tests:/app/tests:ro,z
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      jaeger:
-        condition: service_started
-    # restart: unless-stopped
-
-  search-service:
-    build:
-      context: ./search
-      dockerfile: Dockerfile
-    container_name: search
-    ports:
-      - "${SEARCH_FLASK_PORT}:5000"
-      - "${SEARCH_GRPC_PORT}:50051"
-    env_file:
-      - .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      jaeger:
-        condition: service_started
-    # restart: unless-stopped
+      postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+      user-service: {condition: service_healthy}
 
   feed-service:
-    build:
-      context: ./feed
-      dockerfile: Dockerfile
-    container_name: feed
-    ports:
-      - "${FEED_FLASK_PORT}:5000"
-    env_file:
-      - .env
+    <<: *python
+    build: ./feed
+    ports: ["127.0.0.1:${FEED_HTTP_PORT:-5002}:5000"]
+    volumes:
+      - ./feed/src:/app/src:ro,z
+      - ./feed/main.py:/app/main.py:ro,z
+      - ./feed/tests:/app/tests:ro,z
     depends_on:
-      redis:
-        condition: service_healthy
-      tweet-service:
-        condition: service_started
-      user-service:
-        condition: service_started
-      jaeger:
-        condition: service_started
-    # restart: unless-stopped
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      tweet-service: {condition: service_healthy}
+
+  search-service:
+    <<: *python
+    build: ./search
+    ports: ["127.0.0.1:${SEARCH_HTTP_PORT:-5003}:5000"]
+    volumes:
+      - ./search/src:/app/src:ro,z
+      - ./search/main.py:/app/main.py:ro,z
+      - ./search/tests:/app/tests:ro,z
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+      jaeger: {condition: service_started}
+
+  feed-worker:
+    build: ./feed-worker
+    env_file: [.env]
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      user-service: {condition: service_healthy}
 
   search-worker:
-    build:
-      context: ./search-worker
-      dockerfile: Dockerfile
-    container_name: search-worker
-    env_file:
-      - .env
+    build: ./search-worker
+    env_file: [.env]
     depends_on:
-      rabbitmq:
-        condition: service_healthy
-        restart: true
-      search-service:
-        condition: service_started
+      rabbitmq: {condition: service_healthy}
+      elasticsearch: {condition: service_healthy}
 
 volumes:
   postgres_data:
   redis_data:
   elasticsearch_data:
   rabbitmq_data:
-
-networks:
-  default:
-    driver: bridge

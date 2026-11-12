@@ -28,5 +28,10 @@ class Config:
     def __contains__(self, key):
         return key in self._data
 
+    def get(self, key, default=None):
+        if key in self._data:
+            return str(self._data[key])
+        return default
+
 
 config = Config()

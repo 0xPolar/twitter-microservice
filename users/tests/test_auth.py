@@ -1,109 +1,96 @@
-import pytest
-from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 import jwt
+import pytest
+
+from src.dependencies import auth
+from src.routes.user_routes import router
 
 
-class TestSignJWT:
-    """Tests for JWT signing functionality."""
-
-    def test_sign_jwt_returns_string(self):
-        """Test that sign_jwt returns a string token."""
-        with patch.dict("os.environ", {"JWT_SECRET": "test-secret-key"}):
-            # Re-import to pick up the patched env
-            import importlib
-            import src.dependencies.auth as auth_module
-            importlib.reload(auth_module)
-
-            token = auth_module.sign_jwt("user-123", "testuser")
-
-            assert isinstance(token, str)
-            assert len(token) > 0
-
-    def test_sign_jwt_contains_user_data(self):
-        """Test that signed JWT contains correct user data."""
-        with patch.dict("os.environ", {"JWT_SECRET": "test-secret-key"}):
-            import importlib
-            import src.dependencies.auth as auth_module
-            importlib.reload(auth_module)
-
-            token = auth_module.sign_jwt("user-123", "testuser")
-            decoded = jwt.decode(token, "test-secret-key", algorithms=["HS256"])
-
-            assert decoded["user_id"] == "user-123"
-            assert decoded["username"] == "testuser"
-
-    def test_sign_jwt_has_expiration(self):
-        """Test that signed JWT has expiration claim."""
-        with patch.dict("os.environ", {"JWT_SECRET": "test-secret-key"}):
-            import importlib
-            import src.dependencies.auth as auth_module
-            importlib.reload(auth_module)
-
-            token = auth_module.sign_jwt("user-123", "testuser")
-            decoded = jwt.decode(token, "test-secret-key", algorithms=["HS256"])
-
-            assert "exp" in decoded
-            assert "iat" in decoded
+@pytest.fixture(autouse=True)
+def jwt_settings(monkeypatch):
+    monkeypatch.setattr(auth, "JWT_SECRET", "test-secret-key-for-auth-tests-only")
+    monkeypatch.setattr(auth, "JWT_ALGO", "HS256")
 
 
-class TestDecodeJWT:
-    """Tests for JWT decoding functionality."""
-
-    def test_decode_valid_token(self):
-        """Test decoding a valid JWT token."""
-        with patch.dict("os.environ", {"JWT_SECRET": "test-secret-key"}):
-            import importlib
-            import src.dependencies.auth as auth_module
-            importlib.reload(auth_module)
-
-            # Create a valid token
-            token = auth_module.sign_jwt("user-123", "testuser")
-
-            # Decode it
-            result = auth_module.decode_jwt(token)
-
-            assert result["user_id"] == "user-123"
-            assert result["username"] == "testuser"
-
-    def test_decode_expired_token_raises(self):
-        """Test that decoding expired token raises ExpiredSignatureError."""
-        with patch.dict("os.environ", {"JWT_SECRET": "test-secret-key"}):
-            import importlib
-            import src.dependencies.auth as auth_module
-            importlib.reload(auth_module)
-
-            # Create an expired token manually
-            expired_payload = {
-                "user_id": "user-123",
-                "username": "testuser",
-                "exp": datetime.utcnow() - timedelta(hours=1),
-                "iat": datetime.utcnow() - timedelta(hours=2)
-            }
-            expired_token = jwt.encode(expired_payload, "test-secret-key", algorithm="HS256")
-
-            with pytest.raises(jwt.ExpiredSignatureError):
-                auth_module.decode_jwt(expired_token)
-
-    def test_decode_invalid_token_raises(self):
-        """Test that decoding invalid token raises InvalidTokenError."""
-        with patch.dict("os.environ", {"JWT_SECRET": "test-secret-key"}):
-            import importlib
-            import src.dependencies.auth as auth_module
-            importlib.reload(auth_module)
-
-            with pytest.raises(jwt.InvalidTokenError):
-                auth_module.decode_jwt("invalid.token.here")
+@pytest.fixture
+def payload():
+    now = datetime.now(timezone.utc)
+    return {"user_id": "user-123", "username": "testuser", "iat": now,
+            "exp": now + timedelta(hours=48)}
 
 
-class TestUserToken:
-    """Tests for UserToken dataclass."""
+def encode(payload, secret=None, algorithm="HS256"):
+    return jwt.encode(payload, secret or auth.JWT_SECRET, algorithm=algorithm)
 
-    def test_user_token_creation(self):
-        """Test UserToken dataclass creation."""
-        from src.dependencies.auth import UserToken
 
-        user_token = UserToken(id="user-123", username="testuser")
+@pytest.fixture
+def client():
+    app = FastAPI()
+    app.include_router(router)
+    with TestClient(app) as client:
+        yield client
 
-        assert user_token.id == "user-123"
-        assert user_token.username == "testuser"
+
+def test_signed_token_contains_identity_and_48_hour_expiry():
+    token = auth.sign_jwt("user-123", "testuser")
+    decoded = auth.decode_jwt(token)
+    assert decoded["user_id"] == "user-123"
+    assert decoded["username"] == "testuser"
+    assert decoded["exp"] - decoded["iat"] == 48 * 60 * 60
+
+
+def test_valid_token_authenticates(client):
+    response = client.get("/hello", headers={"Authorization": "Bearer " + auth.sign_jwt("user-123", "testuser")})
+    assert response.status_code == 200
+    assert response.json() == {"message": "Hello, testuser"}
+
+
+@pytest.mark.parametrize("claim", ["user_id", "username", "exp", "iat"])
+def test_missing_required_claim_is_rejected(client, payload, claim):
+    del payload[claim]
+    token = encode(payload)
+    with pytest.raises(jwt.InvalidTokenError):
+        auth.decode_jwt(token)
+    assert client.get("/hello", headers={"Authorization": "Bearer " + token}).status_code == 403
+
+
+@pytest.mark.parametrize("claim,value", [("user_id", 123), ("user_id", ""), ("username", []), ("username", 42)])
+def test_malformed_identity_is_rejected(client, payload, claim, value):
+    payload[claim] = value
+    assert client.get("/hello", headers={"Authorization": "Bearer " + encode(payload)}).status_code == 403
+
+
+def test_expired_token_is_rejected(client, payload):
+    payload["iat"] = datetime.now(timezone.utc) - timedelta(hours=2)
+    payload["exp"] = datetime.now(timezone.utc) - timedelta(hours=1)
+    token = encode(payload)
+    with pytest.raises(jwt.ExpiredSignatureError):
+        auth.decode_jwt(token)
+    response = client.get("/hello", headers={"Authorization": "Bearer " + token})
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Expired JWT Token"
+
+
+@pytest.mark.parametrize("kind", ["wrong_signature", "wrong_algorithm", "malformed", "future_iat"])
+def test_invalid_tokens_are_rejected(client, payload, kind):
+    if kind == "wrong_signature":
+        token = encode(payload, secret="a-different-signing-key-for-tests")
+    elif kind == "wrong_algorithm":
+        token = encode(payload, algorithm="HS512")
+    elif kind == "future_iat":
+        payload["iat"] = datetime.now(timezone.utc) + timedelta(hours=1)
+        token = encode(payload)
+    else:
+        token = "invalid.token.here"
+    with pytest.raises(jwt.InvalidTokenError):
+        auth.decode_jwt(token)
+    assert client.get("/hello", headers={"Authorization": "Bearer " + token}).status_code == 403
+
+
+@pytest.mark.parametrize("header", [None, "Basic credentials", "Bearer"])
+def test_missing_bearer_credentials_are_rejected(client, header):
+    headers = {"Authorization": header} if header else {}
+    assert client.get("/hello", headers=headers).status_code == 403

@@ -10,10 +10,15 @@ from sqlalchemy import (
     func,
 )
 
-from bcrypt import hashpw, checkpw, gensalt
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError
+from bcrypt import checkpw
 from src.dependencies.db import Base
 
 from uuid import uuid4
+
+
+password_hasher = PasswordHasher()
 
 
 class User(Base):
@@ -50,15 +55,24 @@ class User(Base):
         self.num_followers += count
         return self.num_followers
 
-    def verify_password(self, plaintext_password: str):
-        hashed_password = str(self.password).encode("utf-8")
-        provided_password = plaintext_password.encode("utf-8")
-        return checkpw(provided_password, hashed_password)
+    def verify_password(self, plaintext_password: str) -> bool:
+        try:
+            stored_hash = self.password
+            if isinstance(stored_hash, bytes):
+                stored_hash = stored_hash.decode("ascii")
+            # Older psycopg2 inserts supplied bytes to the text column, which
+            # PostgreSQL can represent as a hex-encoded bytea string.
+            if stored_hash.startswith("\\x"):
+                stored_hash = bytes.fromhex(stored_hash[2:]).decode("ascii")
+            if stored_hash.startswith(("$2a$", "$2b$", "$2y$")):
+                return checkpw(plaintext_password.encode("utf-8"), stored_hash.encode("ascii"))
+            return password_hasher.verify(stored_hash, plaintext_password)
+        except (InvalidHashError, VerificationError, ValueError, UnicodeError):
+            return False
 
     @staticmethod
-    def _generate_password_hash(plaintext_password: str):
-        provided_password = plaintext_password.encode("utf-8")
-        return hashpw(provided_password, gensalt())
+    def _generate_password_hash(plaintext_password: str) -> str:
+        return password_hasher.hash(plaintext_password)
 
     def increment_tweets(self, count=1):
         self.num_tweets += count

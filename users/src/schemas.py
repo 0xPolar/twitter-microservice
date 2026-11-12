@@ -1,15 +1,15 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 
 # User Schemas
 class CreateUserRequest(BaseModel):
     username: str
     password: str
-    email: str
+    email: EmailStr
 
 
 class LoginUserRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
 

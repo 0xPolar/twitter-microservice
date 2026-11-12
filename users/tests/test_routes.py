@@ -244,3 +244,33 @@ class TestFollowByIdEndpoint:
 
         assert response.status_code == 404
         assert "could not find follow" in response.json()["detail"]
+
+
+class TestCredentialWorkflow:
+    def test_register_login_and_authenticate_with_long_password(self, test_client_no_auth, test_db):
+        from src.models import User
+
+        credentials = {"email": "workflow@example.com", "username": "workflow", "password": "🔒" * 100}
+        registered = test_client_no_auth.post("/users/register", json=credentials)
+        assert registered.status_code == 200
+        data = registered.json()
+        assert "password" not in data["user"]
+        assert credentials["password"] not in registered.text
+        stored = test_db.query(User).filter_by(email=credentials["email"]).one()
+        assert stored.password.startswith("$argon2id$")
+        assert stored.verify_password(credentials["password"])
+
+        logged_in = test_client_no_auth.post("/users/login", json={
+            "email": credentials["email"], "password": credentials["password"]})
+        assert logged_in.status_code == 200
+        assert logged_in.json()["user"]["id"] == data["user"]["id"]
+        for token in (data["token"], logged_in.json()["token"]):
+            protected = test_client_no_auth.get("/hello", headers={"Authorization": "Bearer " + token})
+            assert protected.status_code == 200
+            assert protected.json() == {"message": "Hello, workflow"}
+        assert test_client_no_auth.post("/users/login", json={
+            "email": credentials["email"], "password": credentials["password"] + "wrong"}).status_code == 400
+
+    def test_invalid_login_email_is_validation_error(self, test_client_no_auth):
+        response = test_client_no_auth.post("/users/login", json={"email": "invalid", "password": "password"})
+        assert response.status_code == 422

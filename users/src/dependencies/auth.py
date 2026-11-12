@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, Request, Depends
 
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -43,13 +43,14 @@ class UserToken:
 
 
 def sign_jwt(user_id: str, username: str) -> str:
-    expiration = datetime.utcnow() + timedelta(hours=48)
+    now = datetime.now(timezone.utc)
+    expiration = now + timedelta(hours=48)
     token = jwt.encode(
         {
             "user_id": str(user_id),
             "username": username,
             "exp": expiration,
-            "iat": datetime.utcnow(),
+            "iat": now,
         },
         JWT_SECRET,
         algorithm=JWT_ALGO,
@@ -58,16 +59,17 @@ def sign_jwt(user_id: str, username: str) -> str:
 
 
 def decode_jwt(token: str) -> Dict:
-    try:
-        decoded_token = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
-
-        return decoded_token
-    except jwt.ExpiredSignatureError:
-        raise jwt.ExpiredSignatureError("Token has expired")
-    except jwt.InvalidTokenError:
-        raise jwt.InvalidTokenError("Invalid token")
-    except Exception as e:
-        return {}
+    payload = jwt.decode(
+        token,
+        JWT_SECRET,
+        algorithms=[JWT_ALGO],
+        options={"require": ["exp", "iat", "user_id", "username"]},
+    )
+    if not isinstance(payload["user_id"], str) or not payload["user_id"]:
+        raise jwt.InvalidTokenError("Invalid user_id claim")
+    if not isinstance(payload["username"], str):
+        raise jwt.InvalidTokenError("Invalid username claim")
+    return payload
 
 
 async def VerifyToken(credentials: HTTPAuthorizationCredentials = Depends(security)):

@@ -161,3 +161,31 @@ def mock_jwt_token():
 def auth_headers(mock_jwt_token):
     """Authorization headers with Bearer token."""
     return {"Authorization": f"Bearer {mock_jwt_token}"}
+
+
+@pytest.fixture
+def grpc_database(test_db, monkeypatch):
+    from src.grpc import server
+
+    monkeypatch.setattr(server, "SessionLocal", sessionmaker(bind=test_db.get_bind()))
+    return test_db
+
+
+@pytest.fixture
+def user_grpc_stub(grpc_database):
+    from concurrent.futures import ThreadPoolExecutor
+    import grpc
+    from src.grpc import server as user_server
+    from src.grpc import user_service_pb2_grpc as pb2_grpc
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        server = grpc.server(executor)
+        pb2_grpc.add_UserServicer_to_server(user_server.UserService(), server)
+        port = server.add_insecure_port("127.0.0.1:0")
+        server.start()
+        try:
+            with grpc.insecure_channel(f"127.0.0.1:{port}") as channel:
+                grpc.channel_ready_future(channel).result(timeout=5)
+                yield pb2_grpc.UserStub(channel)
+        finally:
+            server.stop(0).wait()

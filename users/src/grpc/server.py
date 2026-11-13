@@ -5,6 +5,8 @@ from uuid import UUID
 from typing import Generator
 
 import grpc
+from sqlalchemy import func
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 import src.grpc.user_service_pb2 as pb2
@@ -28,7 +30,7 @@ def get_session() -> Generator[Session, None, None]:
 class UserService(pb2_grpc.UserServicer):
     def GetUser(self, request, context):
         with get_session() as db:
-            userID = UUID(request.user_id, version=4)
+            userID = UUID(request.user_id)
 
             user = db.query(User).filter_by(id=userID).first()
 
@@ -39,26 +41,25 @@ class UserService(pb2_grpc.UserServicer):
                 id=str(user.id),
                 email=user.email,
                 username=user.username,
-                numTweets=user.num_tweets,
-                numFollowers=user.num_followers,
-                created_at=0,
+                numTweets=user.num_tweets or 0,
+                numFollowers=user.num_followers or 0,
+                created_at=int(user.created_at.timestamp()),
             )
             return pb2.GetUserRes(valid=True, user=user_struct)
 
     def IncrementsTweets(self, request, context):
         with get_session() as db:
-            userID = request.user_id
-
-            user: User = db.query(User).filter_by(id=userID).first()
-
-            if not user:
-                return pb2.IncrementTweetsRes(success=False)
-
-            user.increment_tweets()
-
+            user_id = UUID(request.user_id)
             try:
+                updated = db.query(User).filter_by(id=user_id).update(
+                    {User.num_tweets: func.coalesce(User.num_tweets, 0) + 1},
+                    synchronize_session=False,
+                )
+                if not updated:
+                    db.rollback()
+                    return pb2.IncrementTweetsRes(success=False)
                 db.commit()
-            except Exception as e:
+            except SQLAlchemyError as e:
                 db.rollback()
                 logger.error(f"Error incrementing tweets: {e}")
                 return pb2.IncrementTweetsRes(success=False)

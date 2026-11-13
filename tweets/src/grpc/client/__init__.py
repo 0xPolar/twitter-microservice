@@ -9,6 +9,7 @@ from .user_service_pb2 import (
     GetUserRes,
     GetUserReq,
     IncrementTweetsRes,
+    IncrementTweetsReq,
 )
 
 from src.dependencies.config import config
@@ -25,7 +26,7 @@ def GetUser(user_id: str):
             response: GetUserRes = stub.GetUser(GetUserReq(user_id=user_id))
 
         logger.info(f"GetUser response for {user_id}: {response.valid}")
-        return response.user
+        return response.user if response.valid else None
     except grpc.RpcError as e:
         logger.error(f"gRPC error in GetUser: {e.code()}: {e.details()}")
         return None
@@ -36,7 +37,7 @@ def IncrementTweets(user_id: str):
         with grpc.insecure_channel(USER_GRPC_TARGET) as channel:
             stub = UserStub(channel)
             response: IncrementTweetsRes = stub.IncrementsTweets(
-                GetUserReq(user_id=user_id)
+                IncrementTweetsReq(user_id=user_id)
             )
 
         logger.info(f"IncrementTweets response for {user_id}: {response.success}")

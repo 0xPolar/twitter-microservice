@@ -28,7 +28,7 @@ def GetUser(user_id: str):
             response: GetUserRes = stub.GetUser(GetUserReq(user_id=user_id))
 
         logger.info(f"GetUser response for {user_id}: {response.valid}")
-        return response.user
+        return response.user if response.valid else None
     except grpc.RpcError as e:
         logger.error(f"gRPC error in GetUser: {e.code()}: {e.details()}")
         return None

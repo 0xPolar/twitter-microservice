@@ -3,28 +3,25 @@
 import grpc
 import warnings
 
-import src.grpc.user_service_pb2 as user__service__pb2
+from . import user_service_pb2 as user__service__pb2
 
-GRPC_GENERATED_VERSION = "1.71.0"
+GRPC_GENERATED_VERSION = '1.76.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
 try:
     from grpc._utilities import first_version_is_lower
-
-    _version_not_supported = first_version_is_lower(
-        GRPC_VERSION, GRPC_GENERATED_VERSION
-    )
+    _version_not_supported = first_version_is_lower(GRPC_VERSION, GRPC_GENERATED_VERSION)
 except ImportError:
     _version_not_supported = True
 
 if _version_not_supported:
     raise RuntimeError(
-        f"The grpc package installed is at version {GRPC_VERSION},"
-        + f" but the generated code in user_service_pb2_grpc.py depends on"
-        + f" grpcio>={GRPC_GENERATED_VERSION}."
-        + f" Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}"
-        + f" or downgrade your generated code using grpcio-tools<={GRPC_VERSION}."
+        f'The grpc package installed is at version {GRPC_VERSION},'
+        + ' but the generated code in user_service_pb2_grpc.py depends on'
+        + f' grpcio>={GRPC_GENERATED_VERSION}.'
+        + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
+        + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
     )
 
 
@@ -38,29 +35,25 @@ class UserStub(object):
             channel: A grpc.Channel.
         """
         self.GetUser = channel.unary_unary(
-            "/user_service.User/GetUser",
-            request_serializer=user__service__pb2.GetUserReq.SerializeToString,
-            response_deserializer=user__service__pb2.GetUserRes.FromString,
-            _registered_method=True,
-        )
+                '/user_service.User/GetUser',
+                request_serializer=user__service__pb2.GetUserReq.SerializeToString,
+                response_deserializer=user__service__pb2.GetUserRes.FromString,
+                _registered_method=True)
         self.IncrementsTweets = channel.unary_unary(
-            "/user_service.User/IncrementsTweets",
-            request_serializer=user__service__pb2.IncrementTweetsReq.SerializeToString,
-            response_deserializer=user__service__pb2.IncrementTweetsRes.FromString,
-            _registered_method=True,
-        )
+                '/user_service.User/IncrementsTweets',
+                request_serializer=user__service__pb2.IncrementTweetsReq.SerializeToString,
+                response_deserializer=user__service__pb2.IncrementTweetsRes.FromString,
+                _registered_method=True)
         self.GetFollowers = channel.unary_unary(
-            "/user_service.User/GetFollowers",
-            request_serializer=user__service__pb2.GetFollowersReq.SerializeToString,
-            response_deserializer=user__service__pb2.GetFollowersRes.FromString,
-            _registered_method=True,
-        )
+                '/user_service.User/GetFollowers',
+                request_serializer=user__service__pb2.GetFollowersReq.SerializeToString,
+                response_deserializer=user__service__pb2.GetFollowersRes.FromString,
+                _registered_method=True)
         self.GetFollowing = channel.unary_unary(
-            "/user_service.User/GetFollowing",
-            request_serializer=user__service__pb2.GetFollowingReq.SerializeToString,
-            response_deserializer=user__service__pb2.GetFollowingRes.FromString,
-            _registered_method=True,
-        )
+                '/user_service.User/GetFollowing',
+                request_serializer=user__service__pb2.GetFollowingReq.SerializeToString,
+                response_deserializer=user__service__pb2.GetFollowingRes.FromString,
+                _registered_method=True)
 
 
 class UserServicer(object):
@@ -69,79 +62,76 @@ class UserServicer(object):
     def GetUser(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details("Method not implemented!")
-        raise NotImplementedError("Method not implemented!")
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
     def IncrementsTweets(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details("Method not implemented!")
-        raise NotImplementedError("Method not implemented!")
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
     def GetFollowers(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details("Method not implemented!")
-        raise NotImplementedError("Method not implemented!")
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
     def GetFollowing(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details("Method not implemented!")
-        raise NotImplementedError("Method not implemented!")
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
 
 def add_UserServicer_to_server(servicer, server):
     rpc_method_handlers = {
-        "GetUser": grpc.unary_unary_rpc_method_handler(
-            servicer.GetUser,
-            request_deserializer=user__service__pb2.GetUserReq.FromString,
-            response_serializer=user__service__pb2.GetUserRes.SerializeToString,
-        ),
-        "IncrementsTweets": grpc.unary_unary_rpc_method_handler(
-            servicer.IncrementsTweets,
-            request_deserializer=user__service__pb2.IncrementTweetsReq.FromString,
-            response_serializer=user__service__pb2.IncrementTweetsRes.SerializeToString,
-        ),
-        "GetFollowers": grpc.unary_unary_rpc_method_handler(
-            servicer.GetFollowers,
-            request_deserializer=user__service__pb2.GetFollowersReq.FromString,
-            response_serializer=user__service__pb2.GetFollowersRes.SerializeToString,
-        ),
-        "GetFollowing": grpc.unary_unary_rpc_method_handler(
-            servicer.GetFollowing,
-            request_deserializer=user__service__pb2.GetFollowingReq.FromString,
-            response_serializer=user__service__pb2.GetFollowingRes.SerializeToString,
-        ),
+            'GetUser': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetUser,
+                    request_deserializer=user__service__pb2.GetUserReq.FromString,
+                    response_serializer=user__service__pb2.GetUserRes.SerializeToString,
+            ),
+            'IncrementsTweets': grpc.unary_unary_rpc_method_handler(
+                    servicer.IncrementsTweets,
+                    request_deserializer=user__service__pb2.IncrementTweetsReq.FromString,
+                    response_serializer=user__service__pb2.IncrementTweetsRes.SerializeToString,
+            ),
+            'GetFollowers': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetFollowers,
+                    request_deserializer=user__service__pb2.GetFollowersReq.FromString,
+                    response_serializer=user__service__pb2.GetFollowersRes.SerializeToString,
+            ),
+            'GetFollowing': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetFollowing,
+                    request_deserializer=user__service__pb2.GetFollowingReq.FromString,
+                    response_serializer=user__service__pb2.GetFollowingRes.SerializeToString,
+            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-        "user_service.User", rpc_method_handlers
-    )
+            'user_service.User', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers("user_service.User", rpc_method_handlers)
+    server.add_registered_method_handlers('user_service.User', rpc_method_handlers)
 
 
-# This class is part of an EXPERIMENTAL API.
+ # This class is part of an EXPERIMENTAL API.
 class User(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
-    def GetUser(
-        request,
-        target,
-        options=(),
-        channel_credentials=None,
-        call_credentials=None,
-        insecure=False,
-        compression=None,
-        wait_for_ready=None,
-        timeout=None,
-        metadata=None,
-    ):
+    def GetUser(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/user_service.User/GetUser",
+            '/user_service.User/GetUser',
             user__service__pb2.GetUserReq.SerializeToString,
             user__service__pb2.GetUserRes.FromString,
             options,
@@ -152,26 +142,23 @@ class User(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True,
-        )
+            _registered_method=True)
 
     @staticmethod
-    def IncrementsTweets(
-        request,
-        target,
-        options=(),
-        channel_credentials=None,
-        call_credentials=None,
-        insecure=False,
-        compression=None,
-        wait_for_ready=None,
-        timeout=None,
-        metadata=None,
-    ):
+    def IncrementsTweets(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/user_service.User/IncrementsTweets",
+            '/user_service.User/IncrementsTweets',
             user__service__pb2.IncrementTweetsReq.SerializeToString,
             user__service__pb2.IncrementTweetsRes.FromString,
             options,
@@ -182,26 +169,23 @@ class User(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True,
-        )
+            _registered_method=True)
 
     @staticmethod
-    def GetFollowers(
-        request,
-        target,
-        options=(),
-        channel_credentials=None,
-        call_credentials=None,
-        insecure=False,
-        compression=None,
-        wait_for_ready=None,
-        timeout=None,
-        metadata=None,
-    ):
+    def GetFollowers(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/user_service.User/GetFollowers",
+            '/user_service.User/GetFollowers',
             user__service__pb2.GetFollowersReq.SerializeToString,
             user__service__pb2.GetFollowersRes.FromString,
             options,
@@ -212,26 +196,23 @@ class User(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True,
-        )
+            _registered_method=True)
 
     @staticmethod
-    def GetFollowing(
-        request,
-        target,
-        options=(),
-        channel_credentials=None,
-        call_credentials=None,
-        insecure=False,
-        compression=None,
-        wait_for_ready=None,
-        timeout=None,
-        metadata=None,
-    ):
+    def GetFollowing(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/user_service.User/GetFollowing",
+            '/user_service.User/GetFollowing',
             user__service__pb2.GetFollowingReq.SerializeToString,
             user__service__pb2.GetFollowingRes.FromString,
             options,
@@ -242,5 +223,4 @@ class User(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True,
-        )
+            _registered_method=True)

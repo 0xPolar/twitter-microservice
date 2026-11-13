@@ -48,7 +48,7 @@ message GetFollowingReq {
 }
 
 message GetFollowingRes {
-    repeated FollowStruct follwing = 1;
+    repeated FollowStruct following = 1;
 }
 
 

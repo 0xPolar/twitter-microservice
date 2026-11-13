@@ -88,24 +88,18 @@ class UserService(pb2_grpc.UserServicer):
 
     def GetFollowing(self, request, context):
         with get_session() as db:
-            userID = request.user_id
-
-            followers = db.query(Follow).filter_by(follower_id=userID).all()
-
-            if not followers:
-                return pb2.GetFollowersRes(followers=None)
-
-            followerRes = [
+            user_id = UUID(request.user_id)
+            following = db.query(Follow).filter_by(follower_id=user_id).all()
+            relationships = [
                 pb2.FollowStruct(
-                    id=str(follower.id),
-                    follower_id=str(follower.follower_id),
-                    following_id=str(follower.following_id),
-                    created_at=0,
+                    id=str(follow.id),
+                    follower_id=str(follow.follower_id),
+                    following_id=str(follow.following_id),
+                    created_at=int(follow.created_at.timestamp()),
                 )
-                for follower in followers
+                for follow in following
             ]
-
-            return pb2.GetFollowersRes(followers=followerRes)
+            return pb2.GetFollowingRes(following=relationships)
 
 
 def serve():
